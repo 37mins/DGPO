@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 import sys
 import os
-import wandb
-import socket
+# import wandb
+# import socket
 import setproctitle
 import numpy as np
 from pathlib import Path
@@ -101,7 +101,6 @@ def main(args):
     envs = make_render_env(all_args)
     eval_envs = None
     num_agents = all_args.num_agents
-
     config = {
         "all_args": all_args,
         "envs": envs,

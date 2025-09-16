@@ -8,6 +8,9 @@ import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 from collections import deque
+###
+import os
+###
 
 def _t2n(x):
     return x.detach().cpu().numpy()
@@ -66,7 +69,7 @@ class MujocoRunner(Runner):
                 data['loc_z_log_probs'] = loc_z_log_probs
                 data['dones'] = dones
                 self.insert(data, step)
-
+                assert(0)
                 
                 if infos is not None:
                     for info in infos:
@@ -132,17 +135,24 @@ class MujocoRunner(Runner):
     @torch.no_grad()
     def VMAPD_collect(self, step):
         self.trainer.prep_rollout()
+        discrete = False
         z_log_prob, rnn_state_z = self.trainer.policy.evaluate_z(
             np.concatenate(self.buffer.share_obs[step+1]),
             np.concatenate(self.buffer.rnn_states_z[step]),
             np.concatenate(self.buffer.masks[step+1]),
             isTrain=False,
+###
+            discrete=discrete,
+###
         )
         loc_z_log_prob, loc_rnn_state_z = self.trainer.policy.evaluate_local_z(
             np.concatenate(self.buffer.obs[step+1]),
             np.concatenate(self.buffer.loc_rnn_states_z[step]),
             np.concatenate(self.buffer.masks[step+1]),
             # isTrain=False,
+###
+            discrete=discrete
+###
         )
         # [self.envs, agents, dim]
         z_log_probs = np.array(np.split(_t2n(z_log_prob), self.n_rollout_threads))
@@ -197,7 +207,15 @@ class MujocoRunner(Runner):
         if 'loc_rnn_states_z' in data:
             data['loc_rnn_states_z'][dones] = \
                 np.zeros(((dones).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
-
+        '''
+###
+        if 'z_log_probs' in data:
+            data['z_log_probs'][dones] = \
+                np.zeros(((dones).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
+        if 'loc_z_log_probs' in data:
+            data['loc_z_log_probs'][dones] = \
+                np.zeros(((dones).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
+###'''
         data['masks'] = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
         data['masks'][dones] = np.zeros(((dones).sum(), 1), dtype=np.float32)
         
@@ -207,6 +225,9 @@ class MujocoRunner(Runner):
     def eval(self, total_num_steps):
 
         eval_episode_rewards = []
+###
+        eval_path = []
+###
 
         seed_num = np.arange(self.n_eval_rollout_threads) // self.max_z 
         z_num = np.arange(self.n_eval_rollout_threads) % self.max_z
@@ -218,9 +239,6 @@ class MujocoRunner(Runner):
         eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
 
         finish_time_step = np.zeros(self.n_eval_rollout_threads)
-###
-        path = []
-###
 
         for eval_step in range(self.episode_length*10):
 
@@ -239,10 +257,10 @@ class MujocoRunner(Runner):
 
             # Obser reward and next obs
             eval_obs, eval_rewards, eval_dones, eval_infos = self.eval_envs.step(eval_actions_env)
-###
-            path.append(eval_obs)
-###
             eval_episode_rewards.append(eval_rewards.flatten()*(finish_time_step==0))
+###
+            eval_path.append(eval_obs)
+###
 
             eval_rnn_states[eval_dones == True] = np.zeros(((eval_dones == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
             eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
@@ -253,6 +271,10 @@ class MujocoRunner(Runner):
                 break
 
         eval_episode_rewards = np.array(eval_episode_rewards).sum(0)
+###
+        print(len(eval_path), ",", eval_path[0].shape)
+        self.plot_paths(data_list = eval_path, save_dir = self.save_dir, filename = f"{total_num_steps}.png")
+###
         eval_env_infos = {}
         eval_env_infos['eval_average_episode_rewards'] = np.mean(eval_episode_rewards)
         eval_average_episode_rewards = eval_env_infos['eval_average_episode_rewards']
@@ -270,30 +292,28 @@ class MujocoRunner(Runner):
     def render(self):
         """Visualize the env."""
         
-        import mujoco_py
+        # import mujoco_py
         from pyvirtualdisplay import Display
 
         disp = Display()
         disp.start()
-
         envs = self.envs
         all_frames = []
         for z in range(self.max_z):
 
             self.envs.seed(self.seed)
             obs = envs.reset(z)
-
             if self.all_args.save_gifs:
-                image = envs.render(mode='rgb_array')
+                image = envs.render()
                 # cv2.putText(image, str(z), (5, 25), cv2.FONT_HERSHEY_COMPLEX, 1.0, (0,0,0), 3)
                 all_frames.append(image)
             else:
                 envs.render('human')
-
+            
             rnn_states = np.zeros((self.n_rollout_threads, self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
             masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
             episode_rewards = []
-            
+            # print("6")
             for _ in range(self.episode_length):
 
                 self.trainer.prep_rollout()
@@ -340,3 +360,45 @@ class MujocoRunner(Runner):
         
         disp.stop()
 
+    def plot_paths(self, data_list, save_dir, filename="paths.png"):
+        """
+        data_list: 长度 1000 的列表，每个元素 shape=(128,1,29) 的 np.ndarray
+        save_dir: 保存目录
+        filename: 保存文件名
+        """
+        # 确保目录存在
+        os.makedirs(save_dir, exist_ok=True)
+
+        # 时间步
+        T = len(data_list)
+        # 环境数 (128)
+        n_envs = data_list[0].shape[0]
+
+        # 构建每个环境的轨迹 (x,y)
+        paths = [np.zeros((T, 2)) for _ in range(n_envs)]
+        for t in range(T):
+            obs = data_list[t]  # shape = (128,1,29)
+            for env_id in range(n_envs):
+                x, y = obs[env_id, 0, self.max_z], obs[env_id, 0, self.max_z + 1]
+                paths[env_id][t] = [x, y]
+
+        # 画图
+        plt.figure(figsize=(10, 8))
+        for env_id in range(n_envs):
+            plt.plot(paths[env_id][:, 0], paths[env_id][:, 1], lw=1)
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("128 Paths over 1000 Steps")
+        plt.legend(loc="upper right", fontsize=6, ncol=2)  # 只显示部分 label
+        plt.grid(True)
+
+        plt.xlim(-50, 50)
+        plt.ylim(-50, 50)
+        plt.gca().set_aspect('equal', adjustable='box')
+
+        # 保存
+        save_path = os.path.join(save_dir, filename)
+        plt.savefig(save_path, dpi=300)
+        plt.close()
+        print(f"plot saved: {save_path}")

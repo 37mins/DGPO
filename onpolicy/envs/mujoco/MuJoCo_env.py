@@ -19,6 +19,7 @@ import numpy as np
 
 from .envs import make_env
 from .mujoco_wrappers import ToMultiAgent
+from gym.spaces import Box
 
 class MuJocoEnv:
     def __init__(self,args):
@@ -32,13 +33,38 @@ class MuJocoEnv:
         self.observation_space = env.observation_space
 
         self.share_observation_space = env.observation_space
+        # print(env.observation_space)
+###
+        self.observation_space[0] = Box(low=-np.inf, high=np.inf, shape=(29,), dtype=np.float32)
+
+        self.share_observation_space[0] = Box(low=-np.inf, high=np.inf, shape=(29,), dtype=np.float32)
+###
 
     def step(self,a):
         a = a[0]
-        return self.env.step(a)
+        ret = self.env.step(a)
+        # print(len(ret),len(ret[0]),ret[0][0].shape)
+###
+        obs, reward, done, info = ret
+        # print(reward)
+        qpos = self.env.unwrapped.sim.data.qpos.flat[:15]
+        qvel = self.env.unwrapped.sim.data.qvel.flat[:14]
+        # print(qpos.shape, qvel.shape)
+        obs = [np.concatenate([qpos, qvel])]
+
+        if obs[0][1] < 0:
+            reward = [[0]]
+        ret = obs, reward, done, info
+###
+        return ret
 
     def reset(self):
-        return self.env.reset()
+        ret = self.env.reset()
+        qpos = self.env.unwrapped.sim.data.qpos.flat[:15]
+        qvel = self.env.unwrapped.sim.data.qvel.flat[:14]
+        # print(qpos.shape, qvel.shape)
+        ret = [np.concatenate([qpos, qvel])]
+        return ret
 
     def close(self):
         self.env.close()

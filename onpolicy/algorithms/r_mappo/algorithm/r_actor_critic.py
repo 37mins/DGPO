@@ -67,7 +67,7 @@ class R_Discriminator(nn.Module):
 
         self.to(device)
 
-    def evaluate_actions(self, obs, rnn_states, action, masks, available_mask=None, active_masks=None, isTrain=False):
+    def evaluate_actions(self, obs, rnn_states, action, masks, available_mask=None, active_masks=None, isTrain=False, discrete=True):
         """
         Compute log probability and entropy of given actions.
         :param obs: (torch.Tensor) observation inputs into network.
@@ -86,7 +86,6 @@ class R_Discriminator(nn.Module):
         rnn_states = check(rnn_states).to(**self.tpdv)
         action = check(action).to(**self.tpdv)
         masks = check(masks).to(**self.tpdv)
-
         if available_mask is not None:
             available_mask = check(available_mask).to(**self.tpdv)
         if active_masks is not None:
@@ -106,29 +105,68 @@ class R_Discriminator(nn.Module):
                 )
             
         else:
-            
-            action_log_probs = []
+            if discrete:
+                action_log_probs = []
+                
+                for z in range(1, self.max_z):
 
-            for z in range(1, self.max_z):
+                    idx1 = action_np.squeeze(1)
+                    idx2 = (action_np.squeeze(1) + z) % self.max_z
+                    available_mask = np.eye(self.max_z)[idx1] + np.eye(self.max_z)[idx2]
+                    available_mask = check(available_mask).to(**self.tpdv)
+                    
+                    action_log_prob, dist_entropy = \
+                        self.act.evaluate_actions(
+                            actor_features, 
+                            action, 
+                            available_actions=available_mask, 
+                            active_masks=active_masks
+                        )
 
-                idx1 = action_np.squeeze(1)
-                idx2 = (action_np.squeeze(1) + z) % self.max_z
-                available_mask = np.eye(self.max_z)[idx1] + np.eye(self.max_z)[idx2]
-                available_mask = check(available_mask).to(**self.tpdv)
+                    action_log_probs.append(action_log_prob)
 
-                action_log_prob, dist_entropy = \
+                action_log_probs = torch.stack(action_log_probs)
+                action_log_probs = torch.min(action_log_probs, 0)[0]
+###
+            else:
+                action0_log_prob, dist_entropy0 = \
                     self.act.evaluate_actions(
-                        actor_features, 
-                        action, 
-                        available_actions=available_mask, 
-                        active_masks=active_masks
+                        actor_features,
+                        action
                     )
 
-                action_log_probs.append(action_log_prob)
+                action0_prob = torch.exp(torch.sum(action0_log_prob, dim=-1))
 
-            action_log_probs = torch.stack(action_log_probs)
-            action_log_probs = torch.min(action_log_probs, 0)[0]
+                batch_size = action.shape[0]
+                max_z = self.max_z
+                N = 31  # 每维划分11个点
+                grid_points = torch.linspace(-1, 1, N)
 
+                action0_prob = action0_prob.repeat(N**max_z)
+                actor_features = actor_features.repeat(N**max_z, 1)
+
+                def f(z):
+                    action_log_prob, dist_entropy = \
+                        self.act.evaluate_actions(
+                            actor_features,
+                            z,
+                        )
+                    action_prob = torch.exp(torch.sum(action_log_prob, dim=-1))
+                    conditioned_prob = action0_prob / (action0_prob + action_prob)
+                    return torch.log(conditioned_prob)
+
+                import itertools
+                all_points = torch.tensor(list(itertools.product(*[grid_points]*max_z)), **self.tpdv)  # shape=(N^D, D)
+                all_points_batch = all_points.unsqueeze(0).repeat(batch_size, 1, 1)  # shape=(B, N^D, D)
+                B, M, D = all_points_batch.shape
+                flat_points = all_points_batch.view(B*M, D)
+                vals = f(flat_points)
+                vals = vals.view(B, M)
+
+                action_log_probs, _ = torch.min(vals, dim=1)  # shape = (batch_size,)
+                action_log_probs = action_log_probs.unsqueeze(-1)
+###
+        print("here:", action_log_probs.shape)
         return action_log_probs, rnn_states
 
 

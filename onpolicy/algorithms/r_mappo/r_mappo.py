@@ -111,7 +111,7 @@ class R_MAPPO():
 
         :return value_loss: (torch.Tensor) value function loss.
         :return critic_grad_norm: (torch.Tensor) gradient norm from critic up9date.
-        ;return policy_loss: (torch.Tensor) actor(policy) loss value.
+        :return policy_loss: (torch.Tensor) actor(policy) loss value.
         :return dist_entropy: (torch.Tensor) action entropies.
         :return actor_grad_norm: (torch.Tensor) gradient norm from actor update.
         :return imp_weights: (torch.Tensor) importance sampling weights.
@@ -315,7 +315,7 @@ class R_MAPPO():
                 raise NotImplementedError
             else:
                 raise NotImplementedError
-
+            
             for sample in data_generator:
 
                 info = self.ppo_update(sample, update_actor)

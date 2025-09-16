@@ -10,7 +10,7 @@ echo "env is ${env}, map is ${map}, algo is ${algo}, exp is ${exp}, max seed is 
 for seed in `seq ${seed_max}`;
 do
     seed=6
-    CUDA_VISIBLE_DEVICES=0 python3 train/train_smac.py \
+    python3 train/train_smac.py \
     --env_name ${env} --algorithm_name ${algo} --experiment_name ${exp} \
     --map_name ${map} --seed ${seed} --num_agents ${num_agents} --use_linear_lr_decay \
     --num_env_steps 5000000 --ppo_epoch 10 --gamma 0.99 0.75 \

@@ -150,7 +150,7 @@ class R_MAPPOPolicy:
 
         return ex_values, in_values, action_log_probs, dist_entropy
 
-    def evaluate_z(self, cent_obs, rnn_states_z, masks, active_masks=None, isTrain=False):
+    def evaluate_z(self, cent_obs, rnn_states_z, masks, active_masks=None, isTrain=False, discrete=True):
         """
         Get action logprobs / entropy and value function predictions for actor update.
         :param cent_obs (np.ndarray): centralized input to the critic.
@@ -167,29 +167,48 @@ class R_MAPPOPolicy:
         :return action_log_probs: (torch.Tensor) log probabilities of the input actions.
         :return dist_entropy: (torch.Tensor) action distribution entropy for the given inputs.
         """
+
         z_vec = cent_obs[:,:self.max_z]
-        z_idx = np.argmax(z_vec, axis=1)
-        z_idxs = np.expand_dims(z_idx, -1)
         cent_obs = cent_obs[:,self.max_z:]
-
         available_mask = None
-        # if isTrain is False:
-        #     available_mask = np.tril(np.ones(self.max_z))[z_idxs.squeeze(1)]
-        #     cent_obs = cent_obs + np.random.randn(*cent_obs.shape) / 10.
-        
-        action_log_probs, rnn_states_z = \
-            self.discriminator.evaluate_actions(
-                cent_obs, 
-                rnn_states_z, 
-                z_idxs, masks, 
-                available_mask=available_mask, 
-                active_masks=active_masks,
-                isTrain=isTrain
-            )
 
+        if discrete:
+            
+            z_idx = np.argmax(z_vec, axis=1)
+            z_idxs = np.expand_dims(z_idx, -1)
+            
+            # if isTrain is False:
+            #     available_mask = np.tril(np.ones(self.max_z))[z_idxs.squeeze(1)]
+            #     cent_obs = cent_obs + np.random.randn(*cent_obs.shape) / 10.
+            
+            action_log_probs, rnn_states_z = \
+                self.discriminator.evaluate_actions(
+                    cent_obs, 
+                    rnn_states_z, 
+                    z_idxs, masks, 
+                    available_mask=available_mask, 
+                    active_masks=active_masks,
+                    isTrain=isTrain,
+###
+                    discrete=True
+###
+                )
+###
+        else:
+            action_log_probs, rnn_states_z = \
+                self.discriminator.evaluate_actions(
+                    cent_obs, 
+                    rnn_states_z, 
+                    z_vec, masks, 
+                    available_mask=available_mask, 
+                    active_masks=active_masks,
+                    isTrain=isTrain,
+                    discrete=False
+                )
+###
         return action_log_probs, rnn_states_z
 
-    def evaluate_local_z(self, obs, rnn_states_z, masks, active_masks=None):
+    def evaluate_local_z(self, obs, rnn_states_z, masks, active_masks=None, discrete = True):
         """
         Get action logprobs / entropy and value function predictions for actor update.
         :param cent_obs (np.ndarray): centralized input to the critic.
@@ -206,14 +225,28 @@ class R_MAPPOPolicy:
         :return action_log_probs: (torch.Tensor) log probabilities of the input actions.
         :return dist_entropy: (torch.Tensor) action distribution entropy for the given inputs.
         """
-        z_idx = np.argmax(obs[:,:self.max_z], axis=1)
-        z_idxs = np.expand_dims(z_idx, -1)
+        z_vec = obs[:,:self.max_z]
         obs = obs[:,self.max_z:]
-
-        action_log_probs, rnn_states_z = \
-            self.local_discri.evaluate_actions(
-                obs, rnn_states_z, z_idxs, masks, active_masks=active_masks
-            )
+        available_mask = None
+        
+        if discrete:
+            z_idx = np.argmax(z_vec, axis=1)
+            z_idxs = np.expand_dims(z_idx, -1)
+            
+            action_log_probs, rnn_states_z = \
+                self.local_discri.evaluate_actions(
+                    obs, rnn_states_z, z_idxs, masks, active_masks=active_masks, discrete=True
+                )
+        else:
+            action_log_probs, rnn_states_z = \
+                self.discriminator.evaluate_actions(
+                    obs, 
+                    rnn_states_z, 
+                    z_vec, masks,
+                    available_mask=available_mask,
+                    active_masks=active_masks,
+                    discrete=False
+                )
 
         return action_log_probs, rnn_states_z
 

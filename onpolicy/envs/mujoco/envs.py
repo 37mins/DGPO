@@ -16,7 +16,7 @@ from stable_baselines3.common.vec_env import (DummyVecEnv, SubprocVecEnv,
 from stable_baselines3.common.vec_env.vec_normalize import \
     VecNormalize as VecNormalize_
 
-from tmarl.envs.mujoco.mujoco_wrappers import FrameStack
+from onpolicy.envs.mujoco.mujoco_wrappers import FrameStack
 try:
     import dmc2gym
 except ImportError:

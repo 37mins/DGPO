@@ -19,7 +19,7 @@ def make_train_env(all_args):
         def init_env():
             if all_args.env_name == "mujoco":
                 env = MuJocoEnv(all_args)
-                env = VMAPDWrapper(env, all_args.max_z, rank%all_args.max_z)
+                env = VMAPDWrapper(env, all_args.max_z, rank%all_args.max_z, discrete = False)
             else:
                 print("Can not support the " +
                       all_args.env_name + "environment.")

@@ -41,6 +41,7 @@ class SharedReplayBuffer(object):
         obs_shape = get_shape_from_obs_space(obs_space)
         share_obs_shape = get_shape_from_obs_space(cent_obs_space)
         act_shape = get_shape_from_act_space(act_space)
+        # print(obs_shape, share_obs_shape)
 
         if type(obs_shape[-1]) == list:
             obs_shape = obs_shape[:1]
@@ -105,9 +106,15 @@ class SharedReplayBuffer(object):
             'rnn_states_ex_critic':[self.rnn_states_ex_critic,1],
             'rnn_states_in_critic':[self.rnn_states_in_critic,1],
             'rnn_states_z':[self.rnn_states_z,1],
+###
+            'loc_rnn_states_z':[self.loc_rnn_states_z,1],
+###
             'actions':[self.actions,0],
             'action_log_probs':[self.action_log_probs,0],
             'z_log_probs':[self.z_log_probs,0],
+###
+            'loc_z_log_probs':[self.loc_z_log_probs,0],
+###
             'ex_value_preds':[self.ex_value_preds,0],
             'in_value_preds':[self.in_value_preds,0],
             'rewards':[self.rewards,0],
@@ -115,12 +122,15 @@ class SharedReplayBuffer(object):
             'bad_masks':[self.bad_masks,1],
             'active_masks':[self.active_masks,1],
             'available_actions':[self.available_actions,1],
+            
         }
 
         for key in data:
             if key not in ['dones', 'infos']:
                 var = key2var[key][0]
                 idx = key2var[key][1] + self.step
+                print(key)
+                print(var[idx].shape, data[key].shape)
                 var[idx] = data[key].copy()
 
 

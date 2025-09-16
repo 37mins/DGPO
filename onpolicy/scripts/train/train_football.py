@@ -141,7 +141,8 @@ def main(args):
                          group=all_args.scenario_name,
                          dir=str(run_dir),
                          job_type="training",
-                         reinit=True)
+                         reinit=True,
+                         mode = 'offline')
     else:
         if not run_dir.exists():
             curr_run = 'run1'
