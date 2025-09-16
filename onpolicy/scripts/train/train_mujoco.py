@@ -12,14 +12,16 @@ from onpolicy.envs.mujoco.MuJoCo_env import MuJocoEnv
 from onpolicy.envs.mujoco.VMAPD_wrapper import VMAPDWrapper
 from onpolicy.envs.env_wrappers import SubprocVecEnv, DummyVecEnv
 
+from onpolicy.runner.shared.mujoco_runner import ClassifierManager
+
 """Train script for Mujoco."""
 
-def make_train_env(all_args):
+def make_train_env(all_args, classifier = None):
     def get_env_fn(rank):
         def init_env():
             if all_args.env_name == "mujoco":
-                env = MuJocoEnv(all_args)
-                env = VMAPDWrapper(env, all_args.max_z, rank%all_args.max_z, discrete = False)
+                env = MuJocoEnv(all_args, classifier=classifier)
+                env = VMAPDWrapper(env, all_args.max_z, rank%all_args.max_z, discrete=False)
             else:
                 print("Can not support the " +
                       all_args.env_name + "environment.")
@@ -33,12 +35,12 @@ def make_train_env(all_args):
         return SubprocVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
 
 
-def make_eval_env(all_args):
+def make_eval_env(all_args, classifier = None):
     def get_env_fn(rank):
         def init_env():
             if all_args.env_name == "mujoco":
-                env = MuJocoEnv(all_args)
-                env = VMAPDWrapper(env, all_args.max_z, rank%all_args.max_z)
+                env = MuJocoEnv(all_args, classifier = classifier)
+                env = VMAPDWrapper(env, all_args.max_z, rank%all_args.max_z, discrete=False)
             else:
                 print("Can not support the " +
                       all_args.env_name + "environment.")
@@ -57,6 +59,9 @@ def parse_args(args, parser):
                         default='simple_spread', help="Which scenario to run on")
     parser.add_argument("--num_landmarks", type=int, default=3)
     parser.add_argument('--num_agents', type=int, default=3, help="number of players")
+
+    parser.add_argument('--query_freq', type=int, default=2.56e4)
+    parser.add_argument('--warmup_step', type=int, default=1e5)
 
     all_args = parser.parse_known_args(args)[0]
 
@@ -91,6 +96,8 @@ def main(args):
     if not run_dir.exists():
         os.makedirs(str(run_dir))
 
+    all_args.save_dir = str(run_dir)
+
     # wandb
     if all_args.use_wandb:
         run = wandb.init(config=all_args,
@@ -124,11 +131,15 @@ def main(args):
     torch.manual_seed(all_args.seed)
     torch.cuda.manual_seed_all(all_args.seed)
     np.random.seed(all_args.seed)
-
+###
+    obs_shape = 29
+    classifier = ClassifierManager(input_dim=obs_shape, hd_dims=[256], output_dim=1, lr=1e-3, max_z=all_args.max_z)
+###
     # env init
-    envs = make_train_env(all_args)
-    eval_envs = make_eval_env(all_args) if all_args.use_eval else None
+    envs = make_train_env(all_args, classifier = classifier)
+    eval_envs = make_eval_env(all_args, classifier = classifier) if all_args.use_eval else None
     num_agents = all_args.num_agents
+
 
     config = {
         "all_args": all_args,
@@ -136,7 +147,8 @@ def main(args):
         "eval_envs": eval_envs,
         "num_agents": num_agents,
         "device": device,
-        "run_dir": run_dir
+        "run_dir": run_dir,
+        "classifier": classifier
     }
 
     # run experiments

@@ -129,8 +129,6 @@ class SharedReplayBuffer(object):
             if key not in ['dones', 'infos']:
                 var = key2var[key][0]
                 idx = key2var[key][1] + self.step
-                print(key)
-                print(var[idx].shape, data[key].shape)
                 var[idx] = data[key].copy()
 
 

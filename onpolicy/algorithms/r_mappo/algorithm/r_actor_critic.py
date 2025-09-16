@@ -166,7 +166,7 @@ class R_Discriminator(nn.Module):
                 action_log_probs, _ = torch.min(vals, dim=1)  # shape = (batch_size,)
                 action_log_probs = action_log_probs.unsqueeze(-1)
 ###
-        print("here:", action_log_probs.shape)
+        # print("here:", action_log_probs.shape)
         return action_log_probs, rnn_states
 
 

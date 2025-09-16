@@ -21,8 +21,10 @@ from .envs import make_env
 from .mujoco_wrappers import ToMultiAgent
 from gym.spaces import Box
 
+from onpolicy.runner.shared.mujoco_runner import ClassifierManager
+
 class MuJocoEnv:
-    def __init__(self,args):
+    def __init__(self,args,classifier=None):
         env = make_env(args.scenario_name,seed=0, rank=0, 
                        log_dir=None, allow_early_resets=True,add_monitor=True,frame_stack=4)()
         env = ToMultiAgent(env)
@@ -38,9 +40,13 @@ class MuJocoEnv:
         self.observation_space[0] = Box(low=-np.inf, high=np.inf, shape=(29,), dtype=np.float32)
 
         self.share_observation_space[0] = Box(low=-np.inf, high=np.inf, shape=(29,), dtype=np.float32)
+
+        self.classifier = classifier
 ###
 
     def step(self,a):
+        k=0.04
+
         a = a[0]
         ret = self.env.step(a)
         # print(len(ret),len(ret[0]),ret[0][0].shape)
@@ -51,9 +57,17 @@ class MuJocoEnv:
         qvel = self.env.unwrapped.sim.data.qvel.flat[:14]
         # print(qpos.shape, qvel.shape)
         obs = [np.concatenate([qpos, qvel])]
+        r4c = reward[0][0]
+        r4c = 100/(1+np.exp(-k*r4c))
 
-        if obs[0][1] < 0:
-            reward = [[0]]
+        if self.classifier.use_classifier:
+            oracle = self.classifier.model(obs[0])
+            r4c *= oracle
+
+        reward = [[r4c]]
+
+        '''if obs[0][1] < 0:
+            reward = [[-1e5]]'''
         ret = obs, reward, done, info
 ###
         return ret
