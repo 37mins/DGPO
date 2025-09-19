@@ -48,7 +48,7 @@ class VMAPDWrapper(object):
 ###
         else:
             z_vec = self.z_space[0].sample()
-            self.z_vec = z_vec
+            self.z_vec = z_vec/np.linalg.norm(z_vec)
 ###
         z_vec = np.expand_dims(z_vec, 0)
         z_vec = z_vec.repeat(self.num_agents, 0)

@@ -60,8 +60,8 @@ def parse_args(args, parser):
     parser.add_argument("--num_landmarks", type=int, default=3)
     parser.add_argument('--num_agents', type=int, default=3, help="number of players")
 
-    parser.add_argument('--query_freq', type=int, default=2.56e4)
-    parser.add_argument('--warmup_step', type=int, default=1e5)
+    parser.add_argument('--query_freq', type=int, default=1.6e6)
+    parser.add_argument('--warmup_step', type=int, default=3.2e6)
 
     all_args = parser.parse_known_args(args)[0]
 
@@ -71,7 +71,7 @@ def parse_args(args, parser):
 def main(args):
     parser = get_config()
     all_args = parse_args(args, parser)
-
+    
     assert (all_args.use_recurrent_policy or all_args.use_naive_recurrent_policy), ("check recurrent policy!")  
 
     assert (all_args.share_policy == True and all_args.scenario_name == 'simple_speaker_listener') == False, (
@@ -80,7 +80,7 @@ def main(args):
     # cuda
     if all_args.cuda and torch.cuda.is_available():
         print("choose to use gpu...")
-        device = torch.device("cuda:0")
+        device = torch.device("cuda:3")
         torch.set_num_threads(all_args.n_training_threads)
         if all_args.cuda_deterministic:
             torch.backends.cudnn.benchmark = False
@@ -133,7 +133,9 @@ def main(args):
     np.random.seed(all_args.seed)
 ###
     obs_shape = 29
-    classifier = ClassifierManager(input_dim=obs_shape, hd_dims=[256], output_dim=1, lr=1e-3, max_z=all_args.max_z)
+    classifier = ClassifierManager(input_dim=obs_shape, hd_dims=[256], output_dim=1, 
+                                   lr=1e-3, max_z=all_args.max_z,
+                                   mode='Range')
 ###
     # env init
     envs = make_train_env(all_args, classifier = classifier)

@@ -58,11 +58,12 @@ class MuJocoEnv:
         # print(qpos.shape, qvel.shape)
         obs = [np.concatenate([qpos, qvel])]
         r4c = reward[0][0]
-        r4c = 100/(1+np.exp(-k*r4c))
+        r4c = 1/(1+np.exp(-k*r4c))
 
         if self.classifier.use_classifier:
             oracle = self.classifier.model(obs[0])
-            r4c *= oracle
+            # r4c *= oracle
+            r4c = oracle
 
         reward = [[r4c]]
 

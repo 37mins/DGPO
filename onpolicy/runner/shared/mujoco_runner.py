@@ -27,13 +27,13 @@ class MujocoRunner(Runner):
         self.warmup_step = self.all_args.warmup_step
 
     def run(self):
-        self.warmup()   
+        self.warmup()
 
         start = time.time()
         episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
         self.episode_rewards = deque(maxlen=self.episode_length)
 
-        for episode in range(episodes):
+        for episode in range(episodes+1):
 
             if self.use_linear_lr_decay:
                 self.trainer.policy.lr_decay(episode, episodes)
@@ -123,17 +123,17 @@ class MujocoRunner(Runner):
                                 )
                         )
                 self.log_train(train_infos, total_num_steps)
-
-            # eval
-            if episode % self.eval_interval == 0 and self.use_eval:
-                self.eval(total_num_steps)
-
-            if total_num_steps % self.query_freq == 0 and total_num_steps > self.warmup_step:
+            
+            if total_num_steps % self.query_freq == 0 and total_num_steps >= self.warmup_step:
                 path = self.get_path()
                 self.classifier.add_sample(path)
                 self.classifier.train()
-                if total_num_steps % (self.query_freq*10)==0:
-                    self.classifier.save(dir = self.save_dir, name = f'classifier{episode}.pt')
+                self.classifier.save(dir = self.save_dir, name = f'classifier{episode}.pt')
+            
+            # eval
+            if episode % self.eval_interval == 0 and self.use_eval:
+                self.eval(total_num_steps)
+                # assert(0)
 
     def warmup(self):
         
@@ -342,6 +342,14 @@ class MujocoRunner(Runner):
                 eval_average_episode_length
             )
         )
+
+        classified_path = self.classifier.classify_paths(eval_path)
+        coverage = np.mean(classified_path[:,0])
+        safe_coverage = np.mean(classified_path[:,1]-classified_path[:,2])
+        safe_ratio = np.mean(classified_path[:, 1]/classified_path[:,0])
+
+        print("coverage:{:.4f}, safe_converge:{:.4f}, safe_ratio:{:.4f}".format(coverage, safe_coverage, safe_ratio))
+
         self.log_env(eval_env_infos, total_num_steps)
 
     @torch.no_grad()
@@ -417,20 +425,11 @@ class MujocoRunner(Runner):
         disp.stop()
 
     def plot_paths(self, data_list, save_dir, filename="paths.png"):
-        """
-        data_list: 长度 1000 的列表，每个元素 shape=(128,1,29) 的 np.ndarray
-        save_dir: 保存目录
-        filename: 保存文件名
-        """
-        # 确保目录存在
         os.makedirs(save_dir, exist_ok=True)
 
-        # 时间步
         T = len(data_list)
-        # 环境数 (128)
         n_envs = data_list[0].shape[0]
 
-        # 构建每个环境的轨迹 (x,y)
         paths = [np.zeros((T, 2)) for _ in range(n_envs)]
         for t in range(T):
             obs = data_list[t]  # shape = (128,1,29)
@@ -445,7 +444,7 @@ class MujocoRunner(Runner):
 
         plt.xlabel("X")
         plt.ylabel("Y")
-        plt.title("128 Paths over 1000 Steps")
+        plt.title("128 Paths over 200 Steps")
         plt.legend(loc="upper right", fontsize=6, ncol=2)  # 只显示部分 label
         plt.grid(True)
 
@@ -463,7 +462,9 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
 class ClassifierManager:
-    def __init__(self, input_dim, hd_dims, output_dim, lr, max_z, max_epoch = 50, sample_length = 20, batch_size = 10, max_buffer_len = 2000):
+    def __init__(self, input_dim, hd_dims, output_dim, lr, max_z, 
+                 max_epoch = 50, sample_length = 20, batch_size = 5, max_buffer_len = 40*20,
+                 mode = 'North'):
         layers = []
         _in = input_dim
         for _out in hd_dims:
@@ -488,53 +489,53 @@ class ClassifierManager:
         self.max_z = max_z
         self.use_classifier = False
 
+        self.mode = mode
+
     def train(self, batch_size = 16):
         dataset = TensorDataset(self.buffer['data'], self.buffer['label'])
         loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True)
         print(len(loader))
         for epoch in range(self.max_epoch):
+            train_loss = 0
             for x, y in loader:
                 score = self.model(x)
                 loss = self.criterion(score.squeeze(), y)
+                train_loss += loss
 
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
             if (epoch+1)%10==0:
-                print(f"epoch{epoch+1}, classifier loss={loss}")
+                print(f"epoch{epoch+1}, classifier loss={train_loss/len(loader)}")
         self.use_classifier=True
 
     def add_sample(self, path):
-        path_len = len(path)
-        num, _, obs_dim = path[0].shape
 
-        path = np.stack(path, axis=0)
+        path = torch.from_numpy(np.stack(path, axis=0)).squeeze(2)
 
-        path = path[:,:,:,self.max_z:]
-        obs_dim -= self.max_z
+        path = path[:,:,self.max_z:].permute(1,0,2)# ;print(path.shape)
 
-        chosen_paths = np.random.choice(num, size=self.batch_size, replace=False)
+        num_path, path_len, obs_dim = path.shape# ;print(path.shape)
+
+        chosen_paths = np.random.choice(num_path, size=self.batch_size, replace=False)
 
         results = []
 
         for path_idx in chosen_paths:
             start = np.random.randint(0, path_len - self.sample_length + 1)
-            segment = path[start:start+self.sample_length, path_idx, :, :]   # shape: (20, 1, 31)
+            segment = path[path_idx, start:start+self.sample_length, :]
             results.append(segment)
 
-        sub_traj = np.stack(results)
-        arr = torch.from_numpy(sub_traj)
-        arr = arr.squeeze(2)
+        chosen_segments = torch.stack(results, dim=0)# ;print(chosen_segments.shape) # B,S,O
+        coord = chosen_segments[:,:,:2].reshape(-1, 2)# ;print(coord.shape) # B*S,2
 
-        coor_y = arr[:, :, 1]   # (10,20)
+        labels = self.oracle_labels(coord)# ;print(labels.shape) # B*S
+        labels = labels.reshape(self.batch_size, self.sample_length)# ;print(labels.shape) # B,S
+        labels = (~((labels==0).any(dim=1))).long() # B
 
-        traj_has_neg = (coor_y < 0).any(dim=1)
-
-        traj_labels = (~traj_has_neg).long()   # (10,)
-
-        labels = traj_labels.unsqueeze(1).expand(-1, self.sample_length).reshape(-1).to(torch.float32)  # (200,)
-        data = arr.reshape(-1, obs_dim).to(torch.float32)
-        print(labels, arr[:,:,1])
+        labels = labels.unsqueeze(1).expand(-1, self.sample_length).reshape(-1).to(torch.float32) # B*S
+        data = chosen_segments.reshape(-1, obs_dim).to(torch.float32) # B*S,O
+        print(labels, chosen_segments[:,:,1])
         if not self.buffer:
             self.buffer['data'] = data
             self.buffer['label'] = labels
@@ -554,3 +555,64 @@ class ClassifierManager:
         path = os.path.join(dir, name)
         self.model.load_state_dict(torch.load(path))
         print("classifier restored from", path)
+    
+    def oracle_labels(self, coord):
+        if self.mode == 'North':
+            return coord[:,1]>0
+        elif self.mode == 'New_North':
+            x=coord[:,0]
+            y=coord[:,1]
+            return y>torch.abs(x)
+        elif self.mode == 'Range':
+            x=coord[:,0]
+            y=coord[:,1]
+            p2dist=x**2 + (y-5)**2
+            return p2dist <= 400
+        elif self.mode == 'hole2':
+            x=coord[:,0]
+            y=coord[:,1]
+            centres=torch.tensor([
+                [20.,0.],
+                [-20.,0.],
+                [0.,20.],
+                [0.,-20.]
+            ])
+            p2radius = 12**2
+            results = torch.ones(coord.shape[0], dtype=torch.bool)
+            for cx,cy in centres:
+                p2dist=(x-cx)**2+(y-cy)**2
+                results &= p2dist > p2radius
+            return results
+        else:
+            assert(0)
+        
+    def classify_paths(self, path):
+        path = torch.from_numpy(np.stack(path, axis=0)).squeeze(2)
+
+        path = path[:,:,self.max_z:].permute(1,0,2)
+
+        num_path, path_len, obs_dim = path.shape
+        all_coords = path[:,:,:2]
+
+        classified_coords = self.oracle_labels(all_coords.reshape(-1,2)).reshape(num_path, path_len)
+
+        ret = []
+        for i in range(num_path):
+            p = all_coords[i, :, :]
+            all_blocks = len(np.unique(np.floor(p.numpy())))
+
+            save_idx = torch.nonzero(classified_coords[i, :]==1, as_tuple=True)[0]
+            save_coords = p[save_idx, :]
+            save_blocks = len(np.unique(np.floor(save_coords.numpy())))
+
+            bad_idx = torch.nonzero(classified_coords[i, :]==0, as_tuple=True)[0]
+            bad_coords = p[bad_idx, :]
+            bad_blocks = len(np.unique(np.floor(bad_coords.numpy())))
+
+            ret.append(np.array([all_blocks, save_blocks, bad_blocks], dtype=np.int))
+        ret = np.stack(ret)
+
+        return ret
+
+        
+
