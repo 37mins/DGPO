@@ -136,7 +136,7 @@ class R_Discriminator(nn.Module):
                     )
 
                 action0_log_prob_sum = torch.sum(action0_log_prob, dim=-1)
-                action0_log_prob_sum = torch.clamp(action0_log_prob_sum, max=50, min=50)
+                action0_log_prob_sum = torch.clamp(action0_log_prob_sum, max=50, min=-50)
                 action0_prob = torch.exp(action0_log_prob_sum)
 
                 batch_size = action.shape[0]
