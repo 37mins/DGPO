@@ -135,7 +135,9 @@ class R_Discriminator(nn.Module):
                         action
                     )
 
-                action0_prob = torch.exp(torch.sum(action0_log_prob, dim=-1))
+                action0_log_prob_sum = torch.sum(action0_log_prob, dim=-1)
+                action0_log_prob_sum = torch.clamp(action0_log_prob_sum, max=50, min=50)
+                action0_prob = torch.exp(action0_log_prob_sum)
 
                 batch_size = action.shape[0]
                 max_z = self.max_z
@@ -151,8 +153,11 @@ class R_Discriminator(nn.Module):
                             actor_features,
                             z,
                         )
-                    action_prob = torch.exp(torch.sum(action_log_prob, dim=-1))
+                    action_log_prob_sum = torch.sum(action_log_prob, dim=-1)
+                    action_log_prob_sum = torch.clamp(action_log_prob_sum, max=50, min=-50)
+                    action_prob = torch.exp(action_log_prob_sum)
                     conditioned_prob = action0_prob / (action0_prob + action_prob)
+                    conditioned_prob = torch.clamp(conditioned_prob, min=1e-8,max=1)
                     return torch.log(conditioned_prob)
 
                 import itertools

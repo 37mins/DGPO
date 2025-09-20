@@ -45,7 +45,7 @@ class MuJocoEnv:
 ###
 
     def step(self,a):
-        k=0.04
+        k=0.011511
 
         a = a[0]
         ret = self.env.step(a)
@@ -58,7 +58,7 @@ class MuJocoEnv:
         # print(qpos.shape, qvel.shape)
         obs = [np.concatenate([qpos, qvel])]
         r4c = reward[0][0]
-        r4c = 1/(1+np.exp(-k*r4c))
+        r4c = (np.tanh(k*r4c)+1)/2
 
         if self.classifier.use_classifier:
             oracle = self.classifier.model(obs[0])

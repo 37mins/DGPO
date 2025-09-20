@@ -39,7 +39,7 @@ class VMAPDWrapper(object):
         elif self.fix_z is not None:
             self.cur_z = self.fix_z
         else:
-            self.cur_z = np.random.randint(self.max_z) 
+            self.cur_z = np.random.randint(self.max_z)
         
         obs_n = self.env.reset()
         
