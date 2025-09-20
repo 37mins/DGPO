@@ -85,7 +85,7 @@ class DiagGaussian(nn.Module):
         #  An ugly hack for my KFAC implementation.
         zeros = torch.zeros(action_mean.size())
         if x.is_cuda:
-            zeros = zeros.cuda(3)
+            zeros = zeros.cuda(5)
 
         action_logstd = self.logstd(zeros)
         # print(action_logstd)

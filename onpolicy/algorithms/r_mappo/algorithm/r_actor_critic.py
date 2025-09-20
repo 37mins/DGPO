@@ -139,11 +139,11 @@ class R_Discriminator(nn.Module):
 
                 batch_size = action.shape[0]
                 max_z = self.max_z
-                N = 31  # 每维划分11个点
-                grid_points = torch.linspace(-1, 1, N)
+                N = 100  # 每维划分11个点
+                grid_points = torch.linspace(-np.pi, np.pi, N, **self.tpdv)
 
-                action0_prob = action0_prob.repeat(N**max_z)
-                actor_features = actor_features.repeat(N**max_z, 1)
+                action0_prob = action0_prob.repeat(N)
+                actor_features = actor_features.repeat(N, 1)
 
                 def f(z):
                     action_log_prob, dist_entropy = \
@@ -156,7 +156,7 @@ class R_Discriminator(nn.Module):
                     return torch.log(conditioned_prob)
 
                 import itertools
-                all_points = torch.tensor(list(itertools.product(*[grid_points]*max_z)), **self.tpdv)  # shape=(N^D, D)
+                all_points = torch.stack((torch.cos(grid_points), torch.sin(grid_points)), dim=1)  # shape=(N^D, D)
                 all_points_batch = all_points.unsqueeze(0).repeat(batch_size, 1, 1)  # shape=(B, N^D, D)
                 B, M, D = all_points_batch.shape
                 flat_points = all_points_batch.view(B*M, D)

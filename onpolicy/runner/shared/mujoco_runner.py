@@ -349,6 +349,8 @@ class MujocoRunner(Runner):
         safe_ratio = np.mean(classified_path[:, 1]/classified_path[:,0])
 
         print("coverage:{:.4f}, safe_converge:{:.4f}, safe_ratio:{:.4f}".format(coverage, safe_coverage, safe_ratio))
+        with open(os.path.join(self.save_dir, "log_coverage.txt"), "w") as f:
+            f.write("coverage:{:.4f}, safe_converge:{:.4f}, safe_ratio:{:.4f}\n".format(coverage, safe_coverage, safe_ratio))
 
         self.log_env(eval_env_infos, total_num_steps)
 
@@ -444,8 +446,7 @@ class MujocoRunner(Runner):
 
         plt.xlabel("X")
         plt.ylabel("Y")
-        plt.title("128 Paths over 200 Steps")
-        plt.legend(loc="upper right", fontsize=6, ncol=2)  # 只显示部分 label
+        plt.title("48 Paths over 200 Steps")
         plt.grid(True)
 
         plt.xlim(-50, 50)
@@ -535,7 +536,7 @@ class ClassifierManager:
 
         labels = labels.unsqueeze(1).expand(-1, self.sample_length).reshape(-1).to(torch.float32) # B*S
         data = chosen_segments.reshape(-1, obs_dim).to(torch.float32) # B*S,O
-        print(labels, chosen_segments[:,:,1])
+        # print(labels, chosen_segments[:,:,1])
         if not self.buffer:
             self.buffer['data'] = data
             self.buffer['label'] = labels
@@ -602,13 +603,15 @@ class ClassifierManager:
             all_blocks = len(np.unique(np.floor(p.numpy())))
 
             save_idx = torch.nonzero(classified_coords[i, :]==1, as_tuple=True)[0]
+            # print(save_idx)
             save_coords = p[save_idx, :]
             save_blocks = len(np.unique(np.floor(save_coords.numpy())))
 
             bad_idx = torch.nonzero(classified_coords[i, :]==0, as_tuple=True)[0]
+            # print(bad_idx)
             bad_coords = p[bad_idx, :]
             bad_blocks = len(np.unique(np.floor(bad_coords.numpy())))
-
+            # print(all_blocks, save_blocks, bad_blocks)
             ret.append(np.array([all_blocks, save_blocks, bad_blocks], dtype=np.int))
         ret = np.stack(ret)
 

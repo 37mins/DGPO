@@ -80,7 +80,7 @@ def main(args):
     # cuda
     if all_args.cuda and torch.cuda.is_available():
         print("choose to use gpu...")
-        device = torch.device("cuda:3")
+        device = torch.device("cuda:5")
         torch.set_num_threads(all_args.n_training_threads)
         if all_args.cuda_deterministic:
             torch.backends.cudnn.benchmark = False
@@ -135,7 +135,7 @@ def main(args):
     obs_shape = 29
     classifier = ClassifierManager(input_dim=obs_shape, hd_dims=[256], output_dim=1, 
                                    lr=1e-3, max_z=all_args.max_z,
-                                   mode='Range')
+                                   mode='hole2')
 ###
     # env init
     envs = make_train_env(all_args, classifier = classifier)
